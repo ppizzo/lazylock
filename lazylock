@@ -1,0 +1,93 @@
+#!/bin/bash
+#
+# lazylock 0.1
+#
+# This script enables or disables lock screen based on the wifi
+# SSID connected, You can define an array of "safe" wifi SSID
+# where screen lock should be disabled.
+#
+# Depends: wireless-tools
+#
+# 2019 Pietro Pizzo <pietro.pizzo@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+########################################################################
+
+# Options default values.
+# Override them in ~/.lazylockrc using the same syntax
+# (i.e. name="val" without spaces around "=")
+
+# Array of "safe" wifi SSID (use spaces to separate values)
+safe_wifi=("YOURSSID" "ANOTHERSSID")
+
+# Polling time between two consecutive scans
+polling_time=60
+
+# Screensaver lock command (or whatever you immagination suggests you
+screensaver_disable_command="dconf write /org/gnome/desktop/screensaver/lock-enabled false"
+
+# Screensaver enable command (or wathever...)
+screensaver_enable_command="dconf write /org/gnome/desktop/screensaver/lock-enabled true"
+
+# Log files
+log_file=/tmp/`basename $0`.log
+error_file=/tmp/`basename $0`-error.log
+
+# You shouldn't need to modify anything below this line
+########################################################################
+
+function contains() {
+  local e match="$1"
+  shift
+  for e; do [[ "$e" == "$match" ]] && return 0; done
+  return 1
+}
+
+user_options=${HOME}/.lazylockrc
+
+echo "[`date`] `basename $0` started" >>${log_file}
+
+# Read user options
+if [ -r  $user_options ]; then
+    source $user_options
+    if [ "$?" -ne "0" ]; then
+        echo "[`date`] Error reading user preferences from ${user_options}" >>${log_file}
+    else
+        echo "[`date`] User preferences read from ${user_options}" >>${log_file}
+    fi
+fi
+
+while :
+do
+    # Read wifi SSID we're connected
+    wifi=$(/sbin/iwgetid -r)
+
+    # Detect change
+    if [ "${wifi}" != "${last_wifi}" ]; then
+        contains "${wifi}" "${safe_wifi[@]}"
+        if [ "$?" == "0" ]; then
+            $screensaver_disable_command
+            echo "[`date`] wifi SSID \"${wifi}\": safe wifi, screen lock disabled" >>${log_file}
+        else
+            $screensaver_enable_command
+            echo "[`date`] wifi SSID \"${wifi}\": unsafe wifi, screen lock enabled" >>${log_file}
+        fi
+
+        # Save the status
+        last_wifi=$wifi
+    fi
+
+    # Going to bed, wake me up before you go go
+    sleep $polling_time
+done
